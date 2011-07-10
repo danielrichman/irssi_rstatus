@@ -213,7 +213,8 @@ class RStatus:
         self.socket.setblocking(0)
         self.socket.listen(5)
 
-        irssi.io_add_watch(self.socket, self.socket_activity, self.socket)
+        irssi.get_script().io_add_watch(self.socket, self.socket_activity,
+                                        self.socket)
 
     def socket_activity(self, fd, condition, sock):
         if sock != self.socket or sock.fileno() != fd:
@@ -243,13 +244,14 @@ class RStatus:
         }
 
         clientinfo["watches"]["recv"] = \
-            irssi.io_add_watch(conn, self.client_try_recv, conn, irssi.IO_IN)
+            irssi.get_script().io_add_watch(conn, self.client_try_recv,
+                                            conn, irssi.IO_IN)
         clientinfo["watches"]["err"] = \
-            irssi.io_add_watch(conn, self.client_drop_ioerror, conn,
-                               irssi.IO_ERR)
+            irssi.get_script().io_add_watch(conn, self.client_drop_ioerror,
+                                            conn, irssi.IO_ERR)
         clientinfo["watches"]["hup"] = \
-            irssi.io_add_watch(conn, self.client_drop_ioerror, conn,
-                               irssi.IO_HUP)
+            irssi.get_script().io_add_watch(conn, self.client_drop_ioerror,
+                                            conn, irssi.IO_HUP)
 
         self.clients[conn] = clientinfo
 
@@ -266,14 +268,15 @@ class RStatus:
             irssi.get_script().source_remove(clientinfo["timeouts"][name])
 
         clientinfo["timeouts"][name] = \
-            irssi.timeout_add(timeout * 1000, func, data)
+            irssi.get_script().timeout_add(timeout * 1000, func, data)
 
     def client_sendwatch_add(self, conn, watch):
         clientinfo = self.clients[conn]
         assert "send" not in clientinfo["watches"]
 
         clientinfo["watches"]["send"] = \
-            irssi.io_add_watch(conn, self.client_try_send, conn, irssi.IO_OUT)
+            irssi.get_script().io_add_watch(conn, self.client_try_send,
+                                            conn, irssi.IO_OUT)
 
     def client_drop_timeout(self, info):
         (conn, reason) = info
@@ -311,7 +314,8 @@ class RStatus:
             except:
                 conn.close()
             else:
-                irssi.timeout_add(self.timeout_drop_notify * 1000, conn.close)
+                irssi.get_script().timeout_add(self.timeout_drop_notify * 1000,
+                                               conn.close)
         else:
             conn.close()
 
