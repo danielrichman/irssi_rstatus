@@ -544,19 +544,17 @@ class TestIO:
                 func = self.rstatus.client_try_recv
                 iotype = FakeIrssiModule.IO_IN
             else:
-                func = self.rstatus.client_drop
+                func = self.rstatus.client_drop_ioerror
                 iotype = getattr(FakeIrssiModule, "IO_" + watch_what.upper())
 
-            (a, b, c, d) = fakes["irssi"].iowatches[watch_id]
-            if b == self.rstatus.client_drop:
-                c = c[0]
-            assert (a, b, c, d) == (client, func, client, iotype)
+            watch = fakes["irssi"].iowatches[watch_id]
+            assert watch == (client, func, client, iotype)
 
         assert len(clientinfo["timeouts"])
         assert len(fakes["irssi"].timeouts) == 1
         (a, b, c) = fakes["irssi"].timeouts[clientinfo["timeouts"]["recv"]]
         assert (a, b, c[0]) == \
-            (HEARTBEAT * 1000, self.rstatus.client_drop, client)
+            (HEARTBEAT * 1000, self.rstatus.client_drop_timeout, client)
 
         del clientinfo["watches"]
         del clientinfo["timeouts"]
@@ -599,7 +597,7 @@ class TestIO:
         assert len(fakes["irssi"].iowatches) == 5
         assert self.rstatus.clients[client]["send_queue"] != ""
 
-        self.rstatus.client_drop((client, "TEST"), notify=True)
+        self.rstatus.client_drop(client, "TEST", notify=True)
         assert len(fakes["irssi"].timeouts) == 0
         assert len(fakes["irssi"].iowatches) == 1
         assert self.rstatus.clients == {}
@@ -607,7 +605,7 @@ class TestIO:
     def test_client_drop_notify(self):
         (client, clientinfo) = self.create_client()
 
-        self.rstatus.client_drop((client, "TEST"), notify=True)
+        self.rstatus.client_drop(client, "TEST", notify=True)
         assert len(fakes["irssi"].iowatches) == 1
         assert self.rstatus.clients == {}
         assert fakes["irssi"].timeouts.values()[0] == \
@@ -617,7 +615,7 @@ class TestIO:
         tid = clientinfo["timeouts"][name]
         (a, b, c) = fakes["irssi"].timeouts[tid]
         if func == None:
-            func = self.rstatus.client_drop
+            func = self.rstatus.client_drop_timeout
             assert (a, b, c[0]) == (time * 1000, func, client)
 
     def test_client_try_recv(self):
@@ -830,6 +828,13 @@ class TestIO:
                 "wtype": "query", "type": "window_level" },
               { "name": "#blah", "refnum": 6, "level": 3,
                 "wtype": "channel", "type": "window_level" } ]
+
+    def test_hup(self):
+        (client, clientinfo) = self.create_client(sendable=20000)
+        client.close()
+        fakes["irssi"].proc_io()
+
+        assert client not in self.rstatus.clients
 
 class TestExampleClients:
     def setup(self):

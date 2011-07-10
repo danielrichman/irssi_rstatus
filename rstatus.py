@@ -128,7 +128,7 @@ class RStatus:
         self.update(info)
 
     def window_all(self):
-        windows = map(self.window_info, irssi.windows())
+        windows = filter(None, map(self.window_info, irssi.windows()))
         windows.sort(key=lambda x: x["refnum"])
         return windows
 
@@ -157,6 +157,8 @@ class RStatus:
         return info
 
     def filter_event(self, info):
+        if info == False:
+            return False
         if info["name"] in self.settings["override_notify"]:
             return True
         if info["name"] in self.settings["override_ignore"]:
@@ -227,6 +229,9 @@ class RStatus:
             self.socket = None
             return False
 
+        if self.debug:
+            irssi.prnt("RStatus: new client connected")
+
         conn.setblocking(False)
 
         clientinfo = {
@@ -240,16 +245,16 @@ class RStatus:
         clientinfo["watches"]["recv"] = \
             irssi.io_add_watch(conn, self.client_try_recv, conn, irssi.IO_IN)
         clientinfo["watches"]["err"] = \
-            irssi.io_add_watch(conn, self.client_drop, (conn, "IO Error"),
+            irssi.io_add_watch(conn, self.client_drop_ioerror, conn,
                                irssi.IO_ERR)
         clientinfo["watches"]["hup"] = \
-            irssi.io_add_watch(conn, self.client_drop, (conn, "IO Hangup"),
+            irssi.io_add_watch(conn, self.client_drop_ioerror, conn,
                                irssi.IO_HUP)
 
         self.clients[conn] = clientinfo
 
         self.client_timeout_set(conn, "recv", self.timeout_heartbeat,
-                self.client_drop, (conn, "RECV Timeout (HB, F)"))
+                self.client_drop_timeout, (conn, "RECV Timeout (HB, F)"))
         self.new_client(conn)
 
         return True
@@ -270,9 +275,26 @@ class RStatus:
         clientinfo["watches"]["send"] = \
             irssi.io_add_watch(conn, self.client_try_send, conn, irssi.IO_OUT)
 
-    def client_drop(self, info, notify=False):
-        conn, reason = info
+    def client_drop_timeout(self, info):
+        (conn, reason) = info
+        self.client_drop(conn, reason)
+        return False
 
+    def client_drop_ioerror(self, fd, condition, conn):
+        if conn not in self.clients or conn.fileno() != fd:
+            return False
+
+        if condition == irssi.IO_HUP:
+            reason = "IO Hangup"
+        elif condition == irssi.IO_ERR:
+            reason = "IO Error"
+        else:
+            reason = "IO Error (U)"
+
+        self.client_drop(conn, reason)
+        return False
+
+    def client_drop(self, conn, reason, notify=False):
         if self.debug:
             irssi.prnt("RStatus: Dropping client: '{0}'".format(reason))
 
@@ -293,8 +315,6 @@ class RStatus:
         else:
             conn.close()
 
-        return False
-
     def client_try_recv(self, fd, condition, conn):
         if conn not in self.clients or conn.fileno() != fd:
             return False
@@ -306,7 +326,7 @@ class RStatus:
                 irssi.prnt("RStatus: Client IO error:")
                 irssi.prnt(traceback.format_exc())
 
-            self.client_drop((conn, "RECV IO Error"))
+            self.client_drop(conn, "RECV IO Error")
             return False
 
         if not data:
@@ -314,13 +334,13 @@ class RStatus:
                 irssi.prnt("RStatus: Client read failed")
                 irssi.prnt(traceback.format_exc())
 
-            self.client_drop((conn, "RECV failed (EOF)"))
+            self.client_drop(conn, "RECV failed (EOF)")
             return False
 
         self.clients[conn]["recv_buffer"] += data
 
         if len(self.clients[conn]["recv_buffer"]) > self.cbuffer_limit:
-            self.client_drop((conn, "RECV Buffer Overflow"), notify=True)
+            self.client_drop(conn, "RECV Buffer Overflow", notify=True)
 
         if "\n" in self.clients[conn]["recv_buffer"]:
             data_parts = self.clients[conn]["recv_buffer"].split("\n")
@@ -340,7 +360,7 @@ class RStatus:
                         irssi.prnt("RStatus: Client parse failed")
                         irssi.prnt(traceback.format_exc())
 
-                    self.client_drop((conn, "RECV BAD JSON"), notify=True)
+                    self.client_drop(conn, "RECV BAD JSON", notify=True)
                     return False
 
         if len(self.clients[conn]["recv_buffer"]) > 0:
@@ -349,9 +369,10 @@ class RStatus:
         else:
             timeout = self.timeout_heartbeat
             reason = "HB"
+        reason = "RECV Timeout ({0})".format(reason)
 
-        self.client_timeout_set(conn, "recv", timeout, self.client_drop,
-                                (conn, "RECV Timeout ({0})".format(reason)))
+        self.client_timeout_set(conn, "recv", timeout,
+                                self.client_drop_timeout, (conn, reason))
 
         return True
 
@@ -368,7 +389,7 @@ class RStatus:
                 irssi.prnt("RStatus: Client send failed")
                 irssi.prnt(traceback.format_exc())
 
-            self.client_drop((conn, "SEND IO Error"))
+            self.client_drop(conn, "SEND IO Error")
             return False
 
         self.clients[conn]["send_queue"] = \
@@ -376,7 +397,7 @@ class RStatus:
 
         if len(self.clients[conn]["send_queue"]) > 0:
             self.client_timeout_set(conn, "send", self.timeout_txrx,
-                    self.client_drop, (conn, "SEND Timeout (TX)"))
+                    self.client_drop_timeout, (conn, "SEND Timeout (TX)"))
 
             if "send" not in self.clients[conn]["watches"]:
                 self.client_sendwatch_add(conn, True)
@@ -406,7 +427,7 @@ class RStatus:
         if len(self.clients[conn]["send_queue"]) != 0:
             self.clients[conn]["send_queue"] += data
             if len(self.clients[conn]["send_queue"]) > self.cbuffer_limit:
-                self.client_drop((conn, "SEND Buffer Overflow"))
+                self.client_drop(conn, "SEND Buffer Overflow")
         else:
             self.clients[conn]["send_queue"] = data
             self.client_try_send(None, None, conn, init=True)
