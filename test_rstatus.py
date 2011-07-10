@@ -489,14 +489,14 @@ class TestSignals:
         self.rstatus.channeldestroyed(channel)
         assert self.infos == \
             [{"channel": "#sYm", "server": "TheServer", "level": 0,
-              "type": "window_hilight", "wtype": "channel"}]
+              "type": "window_level", "wtype": "channel"}]
 
     def test_querydestroyed(self):
         query = FakeIrssiQuery("asdfblaH")
         self.rstatus.querydestroyed(query)
         assert self.infos == \
             [{"nick": "asdfblaH", "server": "TheServer", "level": 0,
-              "type": "window_hilight", "wtype": "query"}]
+              "type": "window_level", "wtype": "query"}]
 
 class TestFiltering:
     def setup(self):
@@ -865,6 +865,17 @@ class TestIO:
             assert client.recvable == []
             assert clientinfo["send_messages"] == test[1]["send_messages"]
 
+        client.sendable = 60000
+        test_object = {"type": "reset_request"}
+        self.rstatus.client_recv(client, test_object)
+        assert json.loads(client.sent[0][1]) == {"type": "reset"}
+
+        client.sent = []
+        self.newtest_windows_create()
+        self.rstatus.client_recv(client, test_object)
+        assert json.loads(client.sent.pop(0)[1]) == {"type": "reset"}
+        self.newtest_windows_check(client)
+
     def test_client_heartbeat_send(self):
         (client, clientinfo) = self.create_client()
 
@@ -878,14 +889,18 @@ class TestIO:
         assert clientinfo["send_queue"] == "\n"
         assert self.nops == 1
 
-    def test_client_new(self):
+    def newtest_windows_create(self):
         fakes["irssi"]._windows.append(FakeIrssiWindow("asdf", 1))
         fakes["irssi"]._windows.append(FakeIrssiWindow("#spam", 0))
         fakes["irssi"]._windows.append(FakeIrssiWindow("#blah", 3))
         self.rstatus.settings["override_ignore"].add("#spam")
 
+    def test_client_new(self):
+        self.newtest_windows_create()
         (client, clientinfo) = self.create_client(sendable=20000)
+        self.newtest_windows_check(client)
 
+    def newtest_windows_check(self, client):
         assert map(lambda x: x[1][-1], client.sent) == ["\n"] * 2
         assert map(lambda x: json.loads(x[1][:-1]), client.sent) == \
             [ { "nick": "asdf", "level": 1, "server": "TheServer",
@@ -978,6 +993,15 @@ class TestExampleClients:
         for s in client.sent:
             assert s == (1, "\n", "\n")
         assert len(client.sent) > 4
+
+        client.sent = []
+        client.recvable.append(json.dumps({"type": "reset_request"}) + "\n")
+        fakes["irssi"].proc_io()
+
+        ndata = ''.join(map(lambda x: x[1], client.sent))
+        ndata = map(json.loads, ndata.strip().split("\n"))
+        assert ndata == [{"type": "reset"}] + data
+
 
     def test_laggy(self):
         self.create_windows()

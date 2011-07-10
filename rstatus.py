@@ -138,7 +138,7 @@ class RStatus:
             "server": channel.server.tag,
             "wtype": "channel",
             "level": 0,
-            "type": "window_hilight"
+            "type": "window_level"
         }
         self.update(info)
 
@@ -148,7 +148,7 @@ class RStatus:
             "server": query.server.tag,
             "wtype": "query",
             "level": 0,
-            "type": "window_hilight"
+            "type": "window_level"
         }
         self.update(info)
 
@@ -289,7 +289,7 @@ class RStatus:
 
         self.client_timeout_set(conn, "recv", self.timeout_heartbeat,
                 self.client_drop_timeout, (conn, "RECV Timeout (HB, F)"))
-        self.new_client(conn)
+        self.client_new(conn)
 
         return True
 
@@ -450,7 +450,11 @@ class RStatus:
                                     self.client_heartbeat_send, conn)
             return False
 
-    def new_client(self, conn):
+    def client_reset(self, conn):
+        self.client_send(conn, {"type": "reset"})
+        self.client_new(conn)
+
+    def client_new(self, conn):
         for window in filter(self.filter_event, self.window_all()):
             self.client_send(conn, window)
 
@@ -460,6 +464,8 @@ class RStatus:
                 self.clients[conn]["send_messages"] = True
             else:
                 self.clients[conn]["send_messages"] = False
+        elif data["type"] == "reset_request":
+            self.client_reset(conn)
 
     def client_send(self, conn, data):
         data = json.dumps(data)
