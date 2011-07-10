@@ -83,8 +83,8 @@ class RStatus:
         irssi.signal_add("message private", self.privmsg)
         irssi.signal_add("message public", self.pubmsg)
 
-    def windowhilight(self, window):
-        self.update(self.window_info(window))
+        irssi.signal_add("channel destroyed", self.channeldestroyed)
+        irssi.signal_add("query destroyed", self.querydestroyed)
 
     def update(self, info):
         if not self.filter_event(info):
@@ -99,9 +99,12 @@ class RStatus:
 
             self.client_send(conn, info)
 
+    def windowhilight(self, window):
+        self.update(self.window_info(window))
+
     def privmsg(self, server, msg, nick, address):
         info = {
-            "nick": nick.lower(),
+            "nick": nick,
             "server": server.tag,
             "type": "message",
             "wtype": "query",
@@ -120,12 +123,32 @@ class RStatus:
             return
 
         info = {
-            "channel": target.lower(),
-            "nick": nick.lower(),
+            "channel": target,
+            "nick": nick,
             "server": server.tag,
             "type": "message",
             "wtype": "channel",
             "message": msg
+        }
+        self.update(info)
+
+    def channeldestroyed(self, channel):
+        info = {
+            "channel": channel.name,
+            "server": channel.server.tag,
+            "wtype": "channel",
+            "level": 0,
+            "type": "window_hilight"
+        }
+        self.update(info)
+
+    def querydestroyed(self, query):
+        info = {
+            "nick": query.name,
+            "server": query.server.tag,
+            "wtype": "query",
+            "level": 0,
+            "type": "window_hilight"
         }
         self.update(info)
 
@@ -149,7 +172,7 @@ class RStatus:
             return False
 
         info = {
-            wprop: window.active.name.lower(),
+            wprop: window.active.name,
             "server": window.active.server.tag,
             "level": window.data_level,
             "wtype": wtype,
@@ -164,10 +187,10 @@ class RStatus:
 
         if info["wtype"] == "channel":
             default = self.settings["default_channels"]
-            name = info["channel"]
+            name = info["channel"].lower()
         elif info["wtype"] == "query":
             default = self.settings["default_queries"]
-            name = info["nick"]
+            name = info["nick"].lower()
         else:
             return False
 

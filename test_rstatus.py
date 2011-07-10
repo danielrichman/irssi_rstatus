@@ -376,7 +376,9 @@ class TestSetup:
             "setup reread": self.rstatus.load_settings,
             "window hilight": self.rstatus.windowhilight,
             "message private": self.rstatus.privmsg,
-            "message public": self.rstatus.pubmsg
+            "message public": self.rstatus.pubmsg,
+            "channel destroyed": self.rstatus.channeldestroyed,
+            "query destroyed": self.rstatus.querydestroyed
         }
         assert fakes["irssi"].timeouts == {}
 
@@ -447,7 +449,7 @@ class TestSignals:
     def test_privmsg(self):
         self.rstatus.privmsg(FakeIrssiServer(), "Hello", "Sibling", None)
         assert self.infos == [ {
-            "nick": "sibling",
+            "nick": "Sibling",
             "server": "TheServer",
             "type": "message",
             "wtype": "query",
@@ -455,14 +457,14 @@ class TestSignals:
         } ]
 
     def test_pubmsg(self):
-        server = FakeIrssiServer("mynickname")
+        server = FakeIrssiServer("mynicknamE")
         self.rstatus.pubmsg(server, "no hilight here", "source", None, "#ch")
         self.rstatus.pubmsg(server, "no hilight here", "hilight", None, "#ab")
         self.rstatus.pubmsg(server, "asdfmynicknameasdf", "source", None, "#c")
         self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#ch4nnel")
-        self.rstatus.pubmsg(server, "you, mynickname: y", "gooD", None, "#d")
-        self.rstatus.pubmsg(server, "???mynickname???", "Good", None, "#e")
-        self.rstatus.pubmsg(server, "mynickname", "gOOd", None, "#f")
+        self.rstatus.pubmsg(server, "you, MYnickname: y", "good", None, "#d")
+        self.rstatus.pubmsg(server, "???mynickname???", "good", None, "#e")
+        self.rstatus.pubmsg(server, "mynickname", "good", None, "#f")
         assert len(self.infos) == 4
         assert map(lambda x: x["nick"], self.infos) == ["good"] * 4
         assert self.infos[0] == {
@@ -479,8 +481,22 @@ class TestSignals:
         server.channels["#sym"] = FakeIrssiIrcChannel("#sym", ["mynick!name"],
                                                       server)
         self.rstatus.pubmsg(server, "???mynick!name???", "none", None, "#sym")
-        self.rstatus.pubmsg(server, "mynick!name", "gOOd", None, "#fff")
+        self.rstatus.pubmsg(server, "mynick!name", "good", None, "#fff")
         assert map(lambda x: x["nick"], self.infos) == ["good"]
+
+    def test_channeldestroyed(self):
+        channel = FakeIrssiIrcChannel("#sYm")
+        self.rstatus.channeldestroyed(channel)
+        assert self.infos == \
+            [{"channel": "#sYm", "server": "TheServer", "level": 0,
+              "type": "window_hilight", "wtype": "channel"}]
+
+    def test_querydestroyed(self):
+        query = FakeIrssiQuery("asdfblaH")
+        self.rstatus.querydestroyed(query)
+        assert self.infos == \
+            [{"nick": "asdfblaH", "server": "TheServer", "level": 0,
+              "type": "window_hilight", "wtype": "query"}]
 
 class TestFiltering:
     def setup(self):
@@ -498,7 +514,7 @@ class TestFiltering:
         self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#ch4nnel")
         self.rstatus.privmsg(server, "Hello", "Blah", None)
         self.rstatus.privmsg(server, "Hello", "Sibling", None)
-        self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#spam")
+        self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#spaM")
 
     def example_hilights(self):
         self.rstatus.windowhilight(FakeIrssiWindow("nickname", 3))
@@ -539,7 +555,7 @@ class TestFiltering:
         self.rstatus.settings["override_ignore"] = ["blah"]
         self.rstatus.settings["override_notify"] = ["#spam"]
         self.example_messages()
-        assert map(self.get_name, self.infos) == ["sibling", "#spam"]
+        assert map(self.get_name, self.infos) == ["Sibling", "#spaM"]
 
     def test_client_msgs(self):
         self.infos = []
@@ -910,7 +926,7 @@ class TestExampleClients:
         data = map(json.loads, data.strip().split("\n"))
 
         assert data == \
-            [ { "nick": "asdf", "level": 1, "server": "TheServer",
+            [ { "nick": "ASdf", "level": 1, "server": "TheServer",
                 "wtype": "query", "type": "window_level" },
               { "channel": "#blah", "level": 3, "server": "TheServer",
                 "wtype": "channel", "type": "window_level" },
@@ -993,7 +1009,7 @@ class TestExampleClients:
         self.rstatus.privmsg(FakeIrssiServer(), "Hello", "Sibling", None)
         assert len(laggy_client.sent) == 1
         assert json.loads(laggy_client.sent[0][1]) == \
-            {"nick": "sibling", "type": "message", "wtype": "query",
+            {"nick": "Sibling", "type": "message", "wtype": "query",
              "message": "Hello", "server": "TheServer" }
 
         laggy_client.recvable.append("\n")
