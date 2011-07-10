@@ -86,6 +86,7 @@ class FakeIrssiModule:
         self.settings = {}
         self.iowatches = {}
         self._windows = []
+        self.commands = {}
         self.sourceid = 1
 
     def signal_add(self, name, func):
@@ -205,6 +206,9 @@ class FakeIrssiModule:
             for key in remove:
                 if key in self.iowatches:
                     del self.iowatches[key]
+
+    def command_bind(self, name, func):
+        self.commands[name] = func
 
 class FakeSocketClass:
     next_fd = 0
@@ -380,6 +384,9 @@ class TestSetup:
             "channel destroyed": self.rstatus.channeldestroyed,
             "query destroyed": self.rstatus.querydestroyed
         }
+        assert fakes["irssi"].commands == {
+            "rstatus": self.rstatus.status
+        }
         assert fakes["irssi"].timeouts == {}
 
 class TestConfig:
@@ -497,6 +504,10 @@ class TestSignals:
         assert self.infos == \
             [{"nick": "asdfblaH", "server": "TheServer", "level": 0,
               "type": "window_level", "wtype": "query"}]
+
+    def test_status(self):
+        self.rstatus.last_set("blah", {"whatever": True})
+        self.rstatus.status(None, None, None)
 
 class TestFiltering:
     def setup(self):

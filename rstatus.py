@@ -19,6 +19,7 @@ import irssi
 import os
 import string
 import traceback
+import time
 import errno
 import socket
 import json
@@ -68,6 +69,7 @@ class RStatus:
 
     def __init__(self, debug=False):
         self.debug = debug
+        self.lasts = {}
         self.create_settings()
         self.load_settings()
         self.create_socket()
@@ -85,6 +87,20 @@ class RStatus:
 
         irssi.signal_add("channel destroyed", self.channeldestroyed)
         irssi.signal_add("query destroyed", self.querydestroyed)
+
+        irssi.command_bind("rstatus", self.status)
+
+    def status(self, data, server, window):
+        irssi.prnt("RStatus: Current Status: ")
+        irssi.prnt("Connected clients: {0}".format(len(self.clients)))
+        irssi.prnt("Server Socket OK? {0}".format(self.socket != False))
+
+        for key, (info, etime) in self.lasts.items():
+            etime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(etime))
+            irssi.prnt("Last {0}: {1} at {2}".format(key, info, etime))
+
+    def last_set(self, key, info):
+        self.lasts[key] = (info, time.time())
 
     def update(self, info):
         if not self.filter_event(info):
@@ -265,6 +281,10 @@ class RStatus:
         if self.debug:
             irssi.prnt("RStatus: new client connected")
 
+        if address == '':
+            address = 'UNIX Socket'
+        self.last_set("connect", address)
+
         conn.setblocking(False)
 
         clientinfo = {
@@ -335,6 +355,7 @@ class RStatus:
     def client_drop(self, conn, reason, notify=False):
         if self.debug:
             irssi.prnt("RStatus: Dropping client: '{0}'".format(reason))
+        self.last_set("drop", reason)
 
         clientinfo = self.clients[conn]
         del self.clients[conn]
