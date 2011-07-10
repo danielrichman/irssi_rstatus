@@ -213,8 +213,8 @@ class RStatus:
 
         irssi.io_add_watch(self.socket, self.socket_activity, self.socket)
 
-    def socket_activity(self, sock):
-        if sock != self.socket:
+    def socket_activity(self, fd, condition, sock):
+        if sock != self.socket or sock.fileno() != fd:
             return False
 
         try:
@@ -295,8 +295,8 @@ class RStatus:
 
         return False
 
-    def client_try_recv(self, conn):
-        if conn not in self.clients:
+    def client_try_recv(self, fd, condition, conn):
+        if conn not in self.clients or conn.fileno() != fd:
             return False
 
         try:
@@ -355,13 +355,13 @@ class RStatus:
 
         return True
 
-    def client_try_send(self, conn, none_ok=False):
-        if conn not in self.clients:
+    def client_try_send(self, fd, condition, conn, init=False):
+        if conn not in self.clients or (not init and conn.fileno() != fd):
             return False
 
         try:
             sent = conn.send(self.clients[conn]["send_queue"])
-            if not none_ok:
+            if not init:
                 assert sent > 0
         except:
             if self.debug:
@@ -409,13 +409,13 @@ class RStatus:
                 self.client_drop((conn, "SEND Buffer Overflow"))
         else:
             self.clients[conn]["send_queue"] = data
-            self.client_try_send(conn)
+            self.client_try_send(None, None, conn, init=True)
 
     def client_heartbeat_send(self, conn):
         clientinfo = self.clients[conn]
         assert len(clientinfo["send_queue"]) == 0
         clientinfo["send_queue"] = "\n"
-        self.client_try_send(conn, none_ok=True)
+        self.client_try_send(None, None, conn, init=True)
         return False
 
 if not getattr(irssi, "test_mode", False):

@@ -176,9 +176,9 @@ class FakeIrssiModule:
                     did_something = True
 
                     if data != None:
-                        ret = func(data)
+                        ret = func(sock._fd, typ, data)
                     else:
-                        ret = func()
+                        ret = func(sock._fd, typ)
 
                     if ret != True:
                         remove.append(key)
@@ -188,6 +188,13 @@ class FakeIrssiModule:
                     del self.iowatches[key]
 
 class FakeSocketClass:
+    next_fd = 0
+
+    @classmethod
+    def get_fd(cls):
+        cls.next_fd += 1
+        return cls.next_fd
+    
     def __init__(self, family=None, stype=None, client=False):
         self.family = family
         self.stype = stype
@@ -201,6 +208,10 @@ class FakeSocketClass:
         self.recvable = []
         self.closed = False
         self.send_error = False
+        self._fd = self.get_fd()
+
+    def fileno(self):
+        return self._fd
 
     def bind(self, addr):
         assert not self.client
@@ -510,7 +521,7 @@ class TestIO:
         if sendable:
             client.sendable = sendable
         self.socket.acceptable.append((client, ''))
-        assert self.rstatus.socket_activity(self.socket) == True
+        assert self.rstatus.socket_activity(self.socket._fd, None, self.socket)
         clientinfo = self.rstatus.clients[client]
         return (client, clientinfo)
 
@@ -553,12 +564,15 @@ class TestIO:
             {"send_queue": "", "recv_buffer": "", "send_messages": False}
 
     def test_accept_err(self):
-        self.rstatus.socket_activity(self.socket)
+        self.rstatus.socket_activity(self.socket._fd, None, self.socket)
         assert self.socket.closed
         assert self.rstatus.socket == None
 
     def test_accept_other(self):
-        self.rstatus.socket_activity(FakeSocketClass())
+        assert not self.rstatus.socket_activity(FakeSocketClass()._fd, None,
+                                                self.socket)
+        assert not self.rstatus.socket_activity(self.socket._fd, None,
+                                                FakeSocketClass())
         assert self.rstatus.socket == self.socket
         assert not self.socket.closed
 
@@ -608,26 +622,29 @@ class TestIO:
 
     def test_client_try_recv(self):
         client = FakeSocketClass(client=True)
-        assert self.rstatus.client_try_recv(client) == False
+        rargs = (client._fd, None, client)
+        assert self.rstatus.client_try_recv(*rargs) == False
 
         for i in [None, (client.recvable.append, None)]:
             (client, clientinfo) = self.create_client()
+            rargs = (client._fd, None, client)
             if i: i[0](i[1])
             assert client in self.rstatus.clients
-            assert self.rstatus.client_try_recv(client) == False
+            assert self.rstatus.client_try_recv(*rargs) == False
             assert client.closed
             assert client not in self.rstatus.clients
 
         data = []
         self.rstatus.client_recv = lambda x,y: data.append(y)
         (client, clientinfo) = self.create_client()
+        rargs = (client._fd, None, client)
 
         o1 = {"asdf": "Hello World", "abc": 123}
         o2 = {"whatever": "you say", "boo": True}
         o3 = {"a long string": "of random garbagewarbagewarble"}
 
         client.recvable.append(json.dumps(o1) + "\n")
-        assert self.rstatus.client_try_recv(client) == True
+        assert self.rstatus.client_try_recv(*rargs) == True
         assert data == [o1]
         assert clientinfo["recv_buffer"] == ""
 
@@ -640,27 +657,27 @@ class TestIO:
         client.recvable.append(s[:p])
         client.recvable.append(s[p:])
 
-        assert self.rstatus.client_try_recv(client) == True
+        assert self.rstatus.client_try_recv(*rargs) == True
         assert clientinfo["recv_buffer"] != ""
         assert data == [o1, o2]
 
         self.check_timeout("recv", TXRX, client, clientinfo)
 
-        assert self.rstatus.client_try_recv(client) == True
+        assert self.rstatus.client_try_recv(*rargs) == True
         assert clientinfo["recv_buffer"] == ""
         assert data == [o1, o2, o3]
 
         self.check_timeout("recv", HEARTBEAT, client, clientinfo)
 
         client.recvable.append(s)
-        assert self.rstatus.client_try_recv(client) == True
+        assert self.rstatus.client_try_recv(*rargs) == True
         assert data == [o1, o2, o3, o2, o3]
         assert client in self.rstatus.clients
 
         self.check_timeout("recv", HEARTBEAT, client, clientinfo)
 
         client.recvable.append("json, what][dsf[a]sd[f\n\nasdfSDFGDS\n")
-        assert self.rstatus.client_try_recv(client) == False
+        assert self.rstatus.client_try_recv(*rargs) == False
         fakes["irssi"].time_advance(DROP_NOTIFY)
         assert client.closed
         assert client not in self.rstatus.clients
@@ -668,21 +685,24 @@ class TestIO:
 
     def test_client_try_send(self):
         client = FakeSocketClass(client=True)
-        assert self.rstatus.client_try_send(client) == False
+        sargs = (client._fd, None, client)
+        assert self.rstatus.client_try_send(*sargs) == False
 
         for i in [("send_error", True), ("sendable", 0)]:
             (client, clientinfo) = self.create_client()
+            sargs = (client._fd, None, client)
             setattr(client, i[0], i[1])
             assert client in self.rstatus.clients
-            assert self.rstatus.client_try_send(client) == False
+            assert self.rstatus.client_try_send(*sargs) == False
             assert client.closed
             assert client not in self.rstatus.clients
 
         (client, clientinfo) = self.create_client()
+        sargs = (client._fd, None, client)
         clientinfo["send_queue"] = "aaacbbbbbb"
 
         client.sendable = 4
-        assert self.rstatus.client_try_send(client) == True
+        assert self.rstatus.client_try_send(*sargs) == True
 
         self.check_timeout("send", TXRX, client, clientinfo)
 
@@ -690,7 +710,7 @@ class TestIO:
         assert len(fakes["irssi"].iowatches) == 5
 
         client.sendable = 100
-        assert self.rstatus.client_try_send(client) == False
+        assert self.rstatus.client_try_send(*sargs) == False
         self.check_timeout("send", HEARTBEAT, client, clientinfo,
                            func=self.rstatus.client_heartbeat_send)
         assert client.sent == [
@@ -764,6 +784,8 @@ class TestIO:
             self.rstatus.client_recv(client, test)
             assert clientinfo["send_messages"] == test["send_messages"]
 
+        rargs = (client._fd, None, client)
+
         for test in [(True, true_object), (False, false_object),
                      (False, true_object), (True, false_object)]:
             s = json.dumps(test[1]) + "\n"
@@ -772,11 +794,11 @@ class TestIO:
                 client.recvable.append(s[:p])
                 client.recvable.append(s[p:])
 
-                assert self.rstatus.client_try_recv(client) == True
-                assert self.rstatus.client_try_recv(client) == True
+                assert self.rstatus.client_try_recv(*rargs) == True
+                assert self.rstatus.client_try_recv(*rargs) == True
             else:
                 client.recvable.append(s)
-                assert self.rstatus.client_try_recv(client) == True
+                assert self.rstatus.client_try_recv(*rargs) == True
 
             assert client.recvable == []
             assert clientinfo["send_messages"] == test[1]["send_messages"]
@@ -933,7 +955,7 @@ class TestExampleClients:
     def test_mute(self):
         client = FakeSocketClass(client=True)
         self.socket.acceptable.append((client, ''))
-        self.rstatus.socket_activity(self.socket)
+        self.rstatus.socket_activity(self.socket._fd, None, self.socket)
         assert not client.closed
         fakes["irssi"].time_advance(HEARTBEAT - 1)
         assert not client.closed
