@@ -21,8 +21,7 @@ import collections
 import errno
 
 class FakeIrssiWindow:
-    def __init__(self, name, refnum, data_level):
-        self.refnum = refnum
+    def __init__(self, name, data_level):
         self.data_level = data_level
 
         if name[0] == '#':
@@ -30,17 +29,11 @@ class FakeIrssiWindow:
         else:
             self.active = FakeIrssiQuery(name)
 
-class FakeIrssiChannel:
-    def __init__(self, nicks, server):
-        self._nicks = nicks + [server.nick]
-
-    def nicks(self):
-        return self._nicks
-
 class FakeIrssiServer:
-    def __init__(self, nick):
+    def __init__(self, nick="whatever", tag="TheServer"):
         self.nick = nick
         self.channels = {}
+        self.tag = tag
 
     def channel_find(self, name):
         if name not in self.channels:
@@ -49,12 +42,29 @@ class FakeIrssiServer:
             return self.channels[name]
 
 class FakeIrssiIrcChannel:
-    def __init__(self, name):
+    def __init__(self, name, nicks=None, server=None):
         self.name = name
+        self._nicks = []
+
+        if nicks:
+            self._nicks += nicks
+        if server:
+            self.server = server
+            self._nicks += [server.nick]
+        else:
+            self.server = FakeIrssiServer()
+
+    def nicks(self):
+        return self._nicks
 
 class FakeIrssiQuery:
-    def __init__(self, name):
+    def __init__(self, name, server=None):
         self.name = name
+
+        if server:
+            self.server = server
+        else:
+            self.server = FakeIrssiServer()
 
 class FakeIrssiModule:
     test_mode = True
@@ -413,31 +423,32 @@ class TestSignals:
         self.infos.append(info)
 
     def test_windowhilight(self):
-        window = FakeIrssiWindow("#achannel", 36, 1)
+        window = FakeIrssiWindow("#achannel", 1)
         self.rstatus.windowhilight(window)
         assert self.infos == [ {
-            "name": "#achannel",
-            "refnum": 36,
+            "channel": "#achannel",
             "level": 1,
             "wtype": "channel",
-            "type": "window_level"
+            "type": "window_level",
+            "server": "TheServer"
         } ]
         self.infos = []
 
-        window = FakeIrssiWindow("nickname", 123, 3)
+        window = FakeIrssiWindow("nickname", 3)
         self.rstatus.windowhilight(window)
         assert self.infos == [ {
-            "name": "nickname",
-            "refnum": 123,
+            "nick": "nickname",
+            "server": "TheServer",
             "level": 3,
             "wtype": "query",
             "type": "window_level"
         } ]
 
     def test_privmsg(self):
-        self.rstatus.privmsg(None, "Hello", "Sibling", None, None)
+        self.rstatus.privmsg(FakeIrssiServer(), "Hello", "Sibling", None)
         assert self.infos == [ {
-            "name": "sibling",
+            "nick": "sibling",
+            "server": "TheServer",
             "type": "message",
             "wtype": "query",
             "message": "Hello"
@@ -453,21 +464,23 @@ class TestSignals:
         self.rstatus.pubmsg(server, "???mynickname???", "Good", None, "#e")
         self.rstatus.pubmsg(server, "mynickname", "gOOd", None, "#f")
         assert len(self.infos) == 4
-        assert map(lambda x: x["who"], self.infos) == ["good"] * 4
+        assert map(lambda x: x["nick"], self.infos) == ["good"] * 4
         assert self.infos[0] == {
-            "name": "#ch4nnel",
-            "who": "good",
+            "channel": "#ch4nnel",
+            "nick": "good",
             "type": "message",
             "wtype": "channel",
-            "message": "mynickname: hi"
+            "message": "mynickname: hi",
+            "server": "TheServer"
         }
 
         self.infos = []
         server = FakeIrssiServer("mynick,name")
-        server.channels["#sym"] = FakeIrssiChannel(["mynick!name"], server)
+        server.channels["#sym"] = FakeIrssiIrcChannel("#sym", ["mynick!name"],
+                                                      server)
         self.rstatus.pubmsg(server, "???mynick!name???", "none", None, "#sym")
         self.rstatus.pubmsg(server, "mynick!name", "gOOd", None, "#fff")
-        assert map(lambda x: x["who"], self.infos) == ["good"]
+        assert map(lambda x: x["nick"], self.infos) == ["good"]
 
 class TestFiltering:
     def setup(self):
@@ -483,13 +496,13 @@ class TestFiltering:
     def example_messages(self):
         server = FakeIrssiServer("mynickname")
         self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#ch4nnel")
-        self.rstatus.privmsg(None, "Hello", "Blah", None, None)
-        self.rstatus.privmsg(None, "Hello", "Sibling", None, None)
+        self.rstatus.privmsg(server, "Hello", "Blah", None)
+        self.rstatus.privmsg(server, "Hello", "Sibling", None)
         self.rstatus.pubmsg(server, "mynickname: hi", "good", None, "#spam")
 
     def example_hilights(self):
-        self.rstatus.windowhilight(FakeIrssiWindow("nickname", 123, 3))
-        self.rstatus.windowhilight(FakeIrssiWindow("#importantstuff", 223, 3))
+        self.rstatus.windowhilight(FakeIrssiWindow("nickname", 3))
+        self.rstatus.windowhilight(FakeIrssiWindow("#importantstuff", 3))
 
     def test_messages_defaults(self):
         self.infos = []
@@ -507,12 +520,18 @@ class TestFiltering:
         self.example_messages()
         assert map(lambda x: x[1]["wtype"], self.infos) == ["query"] * 2
 
+    def get_name(self, obj):
+        if obj[1]["wtype"] == "channel":
+            return obj[1]["channel"]
+        else:
+            return obj[1]["nick"]
+
     def test_override_ignore(self):
         self.infos = []
         self.rstatus.settings["default_queries"] = False
         self.rstatus.settings["override_ignore"] = ["#spam"]
         self.example_messages()
-        assert map(lambda x: x[1]["name"], self.infos) == ["#ch4nnel"]
+        assert map(lambda x: x[1]["channel"], self.infos) == ["#ch4nnel"]
 
         self.infos = []
         self.rstatus.settings["default_queries"] = True
@@ -520,8 +539,7 @@ class TestFiltering:
         self.rstatus.settings["override_ignore"] = ["blah"]
         self.rstatus.settings["override_notify"] = ["#spam"]
         self.example_messages()
-        assert map(lambda x: x[1]["name"], self.infos) == \
-            ["sibling", "#spam"]
+        assert map(self.get_name, self.infos) == ["sibling", "#spam"]
 
     def test_client_msgs(self):
         self.infos = []
@@ -609,7 +627,7 @@ class TestIO:
             [10000, "function", 4]
 
     def test_client_drop(self):
-        fakes["irssi"]._windows.append(FakeIrssiWindow("asdf", 0, 0))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("asdf", 0))
         (client, clientinfo) = self.create_client(sendable=1)
 
         self.rstatus.client_timeout_set(client, "test", 10, "function", 4)
@@ -845,18 +863,18 @@ class TestIO:
         assert self.nops == 1
 
     def test_client_new(self):
-        fakes["irssi"]._windows.append(FakeIrssiWindow("asdf", 4, 1))
-        fakes["irssi"]._windows.append(FakeIrssiWindow("#spam", 5, 0))
-        fakes["irssi"]._windows.append(FakeIrssiWindow("#blah", 6, 3))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("asdf", 1))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("#spam", 0))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("#blah", 3))
         self.rstatus.settings["override_ignore"].add("#spam")
 
         (client, clientinfo) = self.create_client(sendable=20000)
 
         assert map(lambda x: x[1][-1], client.sent) == ["\n"] * 2
         assert map(lambda x: json.loads(x[1][:-1]), client.sent) == \
-            [ { "name": "asdf", "refnum": 4, "level": 1,
+            [ { "nick": "asdf", "level": 1, "server": "TheServer",
                 "wtype": "query", "type": "window_level" },
-              { "name": "#blah", "refnum": 6, "level": 3,
+            { "channel": "#blah", "level": 3, "server": "TheServer",
                 "wtype": "channel", "type": "window_level" } ]
 
     def test_hup(self):
@@ -879,10 +897,10 @@ class TestExampleClients:
         return client
 
     def create_windows(self):
-        fakes["irssi"]._windows.append(FakeIrssiWindow("ASdf", 4, 1))
-        fakes["irssi"]._windows.append(FakeIrssiWindow("#Spam", 5, 0))
-        fakes["irssi"]._windows.append(FakeIrssiWindow("#blah", 6, 3))
-        fakes["irssi"]._windows.append(FakeIrssiWindow("#bleh", 7, 0))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("ASdf", 1))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("#Spam", 0))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("#blah", 3))
+        fakes["irssi"]._windows.append(FakeIrssiWindow("#bleh", 0))
         self.rstatus.settings["override_ignore"] = "#spam"
 
     def test_lagless(self):
@@ -892,11 +910,11 @@ class TestExampleClients:
         data = map(json.loads, data.strip().split("\n"))
 
         assert data == \
-            [ { "name": "asdf", "refnum": 4, "level": 1,
+            [ { "nick": "asdf", "level": 1, "server": "TheServer",
                 "wtype": "query", "type": "window_level" },
-              { "name": "#blah", "refnum": 6, "level": 3,
+              { "channel": "#blah", "level": 3, "server": "TheServer",
                 "wtype": "channel", "type": "window_level" },
-              { "name": "#bleh", "refnum": 7, "level": 0,
+              { "channel": "#bleh", "level": 0, "server": "TheServer",
                 "wtype": "channel", "type": "window_level" } ]
         client.sent = []
 
@@ -915,8 +933,9 @@ class TestExampleClients:
         self.rstatus.pubmsg(server, "mynickname: hi", "dude", None, "#spam")
         self.rstatus.pubmsg(server, "mynickname: hi", "dude", None, "#bleh")
         assert json.loads(client.sent[1][1][:-1]) == \
-            { "name": "#bleh", "who": "dude", "type": "message",
-              "wtype": "channel", "message": "mynickname: hi" }
+            { "channel": "#bleh", "nick": "dude", "type": "message",
+              "wtype": "channel", "message": "mynickname: hi",
+              "server": "TheServer" }
         assert len(client.sent) == 2
 
         client.recvable.append(json.dumps({"type": "settings",
@@ -971,11 +990,11 @@ class TestExampleClients:
         laggy_client.sent = []
         laggy_client.sendable = 60000
 
-        self.rstatus.privmsg(None, "Hello", "Sibling", None, None)
+        self.rstatus.privmsg(FakeIrssiServer(), "Hello", "Sibling", None)
         assert len(laggy_client.sent) == 1
         assert json.loads(laggy_client.sent[0][1]) == \
-            {"name": "sibling", "type": "message", "wtype": "query",
-             "message": "Hello" }
+            {"nick": "sibling", "type": "message", "wtype": "query",
+             "message": "Hello", "server": "TheServer" }
 
         laggy_client.recvable.append("\n")
         fakes["irssi"].proc_io()
@@ -984,7 +1003,7 @@ class TestExampleClients:
         assert disconnect_client.closed
         assert not laggy_client.closed
 
-        self.rstatus.privmsg(None, "Hello", "Sibling", None, None)
+        self.rstatus.privmsg(FakeIrssiServer(), "Hello", "Sibling", None)
         assert len(laggy_client.sent) == 2
 
     def test_mute(self):

@@ -99,9 +99,10 @@ class RStatus:
 
             self.client_send(conn, info)
 
-    def privmsg(self, server, msg, nick, address, target):
+    def privmsg(self, server, msg, nick, address):
         info = {
-            "name": nick.lower(),
+            "nick": nick.lower(),
+            "server": server.tag,
             "type": "message",
             "wtype": "query",
             "message": msg
@@ -119,8 +120,9 @@ class RStatus:
             return
 
         info = {
-            "name": target.lower(),
-            "who": nick.lower(),
+            "channel": target.lower(),
+            "nick": nick.lower(),
+            "server": server.tag,
             "type": "message",
             "wtype": "channel",
             "message": msg
@@ -128,9 +130,7 @@ class RStatus:
         self.update(info)
 
     def window_all(self):
-        windows = filter(None, map(self.window_info, irssi.windows()))
-        windows.sort(key=lambda x: x["refnum"])
-        return windows
+        return map(self.window_info, irssi.windows())
 
     def window_info(self, window):
         if not window.active:
@@ -138,8 +138,10 @@ class RStatus:
 
         if isinstance(window.active, irssi.IrcChannel):
             wtype = "channel"
+            wprop = "channel"
         elif isinstance(window.active, irssi.Query):
             wtype = "query"
+            wprop = "nick"
         else:
             return False
 
@@ -147,8 +149,8 @@ class RStatus:
             return False
 
         info = {
-            "name": window.active.name.lower(),
-            "refnum": window.refnum,
+            wprop: window.active.name.lower(),
+            "server": window.active.server.tag,
             "level": window.data_level,
             "wtype": wtype,
             "type": "window_level"
@@ -159,15 +161,22 @@ class RStatus:
     def filter_event(self, info):
         if info == False:
             return False
-        if info["name"] in self.settings["override_notify"]:
-            return True
-        if info["name"] in self.settings["override_ignore"]:
-            return False
+
         if info["wtype"] == "channel":
-            return self.settings["default_channels"]
-        if info["wtype"] == "query":
-            return self.settings["default_queries"]
-        return False
+            default = self.settings["default_channels"]
+            name = info["channel"]
+        elif info["wtype"] == "query":
+            default = self.settings["default_queries"]
+            name = info["nick"]
+        else:
+            return False
+
+        if name in self.settings["override_notify"]:
+            return True
+        if name in self.settings["override_ignore"]:
+            return False
+
+        return default
 
     def create_settings(self):
         irssi.settings_add_str("rstatus", "socket", "~/.irssi/rstatus_sock")
