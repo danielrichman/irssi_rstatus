@@ -17,6 +17,8 @@
 
 import sys
 import json
+import collections
+import errno
 
 class FakeIrssiWindow:
     def __init__(self, name, refnum, data_level):
@@ -142,8 +144,12 @@ class FakeIrssiModule:
             if first_timeout[0] != 0:
                 break
 
-            if first_timeout[2] != None:
-                first_timeout[1](first_timeout[2])
+            data = first_timeout[2]
+            if data != None:
+                if not isinstance(data, collections.Sequence):
+                    data = (data, )
+
+                first_timeout[1](*data)
             else:
                 first_timeout[1]()
 
@@ -176,7 +182,10 @@ class FakeIrssiModule:
                     did_something = True
 
                     if data != None:
-                        ret = func(sock._fd, typ, data)
+                        if not isinstance(data, collections.Sequence):
+                            data = (data, )
+
+                        ret = func(sock._fd, typ, *data)
                     else:
                         ret = func(sock._fd, typ)
 
@@ -202,6 +211,7 @@ class FakeSocketClass:
         self.called_bind = False
         self.called_listen = False
         self.called_setblocking = False
+        self.called_shutdown = False
         self.acceptable = []
         self.sendable = 0
         self.sent = []
@@ -242,7 +252,8 @@ class FakeSocketClass:
         assert self.client
         assert self.called_setblocking
         assert not self.closed
-        assert not self.send_error
+        if self.send_error:
+            raise self.send_error
         sent = min(self.sendable, len(data))
         self.sendable = max(0, self.sendable - len(data))
         self.sent.append((sent, data, data[:sent]))
@@ -254,12 +265,23 @@ class FakeSocketClass:
         assert not self.closed
         return self.recvable.pop(0)
 
+    def shutdown(self, arg):
+        assert arg == FakeSocketModule.SHUT_RDWR
+        self.called_shutdown = True
+
     def close(self):
+        assert not self.client or self.called_shutdown
         self.closed = True
+
+class FakeSocketError(Exception):
+    errno = errno.EAGAIN
 
 class FakeSocketModule:
     AF_UNIX = 123346
     SOCK_STREAM = 1244356
+    SHUT_RDWR = 99
+
+    error = FakeSocketError
 
     def __init__(self):
         self.reset()
@@ -609,7 +631,7 @@ class TestIO:
         assert len(fakes["irssi"].iowatches) == 1
         assert self.rstatus.clients == {}
         assert fakes["irssi"].timeouts.values()[0] == \
-            [DROP_NOTIFY * 1000, client.close, None]
+            [DROP_NOTIFY * 1000, self.rstatus.client_conn_close, client]
 
     def check_timeout(self, name, time, client, clientinfo, func=None):
         tid = clientinfo["timeouts"][name]
@@ -686,7 +708,8 @@ class TestIO:
         sargs = (client._fd, None, client)
         assert self.rstatus.client_try_send(*sargs) == False
 
-        for i in [("send_error", True), ("sendable", 0)]:
+        for i in [("send_error", Exception), ("sendable", 0),
+                  ("send_error", fakes["socket"].error)]:
             (client, clientinfo) = self.create_client()
             sargs = (client._fd, None, client)
             setattr(client, i[0], i[1])
@@ -694,6 +717,13 @@ class TestIO:
             assert self.rstatus.client_try_send(*sargs) == False
             assert client.closed
             assert client not in self.rstatus.clients
+
+        (client, clientinfo) = self.create_client()
+        sargs = (client._fd, None, client)
+        client.send_error = fakes["socket"].error()
+        clientinfo["send_queue"] = "aaacbbbbbb"
+        assert self.rstatus.client_try_send(*sargs, init=True) == True
+        self.rstatus.client_drop(client, "TEST")
 
         (client, clientinfo) = self.create_client()
         sargs = (client._fd, None, client)
@@ -831,7 +861,7 @@ class TestIO:
 
     def test_hup(self):
         (client, clientinfo) = self.create_client(sendable=20000)
-        client.close()
+        client.closed = True
         fakes["irssi"].proc_io()
 
         assert client not in self.rstatus.clients

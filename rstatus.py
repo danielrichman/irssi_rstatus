@@ -278,8 +278,7 @@ class RStatus:
             irssi.get_script().io_add_watch(conn, self.client_try_send,
                                             conn, irssi.IO_OUT)
 
-    def client_drop_timeout(self, info):
-        (conn, reason) = info
+    def client_drop_timeout(self, conn, reason):
         self.client_drop(conn, reason)
         return False
 
@@ -297,6 +296,10 @@ class RStatus:
         self.client_drop(conn, reason)
         return False
 
+    def client_conn_close(self, conn):
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
+
     def client_drop(self, conn, reason, notify=False):
         if self.debug:
             irssi.prnt("RStatus: Dropping client: '{0}'".format(reason))
@@ -312,12 +315,12 @@ class RStatus:
             try:
                 conn.send(json.dumps({"type": "disconnect_notice"}) + "\n")
             except:
-                conn.close()
+                self.client_conn_close(conn)
             else:
                 irssi.get_script().timeout_add(self.timeout_drop_notify * 1000,
-                                               conn.close)
+                                               self.client_conn_close, conn)
         else:
-            conn.close()
+            self.client_conn_close(conn)
 
     def client_try_recv(self, fd, condition, conn):
         if conn not in self.clients or conn.fileno() != fd:
@@ -336,7 +339,6 @@ class RStatus:
         if not data:
             if self.debug:
                 irssi.prnt("RStatus: Client read failed")
-                irssi.prnt(traceback.format_exc())
 
             self.client_drop(conn, "RECV failed (EOF)")
             return False
@@ -388,13 +390,17 @@ class RStatus:
             sent = conn.send(self.clients[conn]["send_queue"])
             if not init:
                 assert sent > 0
-        except:
-            if self.debug:
-                irssi.prnt("RStatus: Client send failed")
-                irssi.prnt(traceback.format_exc())
+        except Exception, e:
+            if isinstance(e, socket.error) and e.errno == errno.EAGAIN and \
+               init:
+                sent = 0
+            else:
+                if self.debug:
+                    irssi.prnt("RStatus: Client send failed")
+                    irssi.prnt(traceback.format_exc())
 
-            self.client_drop(conn, "SEND IO Error")
-            return False
+                self.client_drop(conn, "SEND IO Error")
+                return False
 
         self.clients[conn]["send_queue"] = \
             self.clients[conn]["send_queue"][sent:]
