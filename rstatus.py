@@ -487,6 +487,8 @@ class RStatus:
                 self.clients[conn]["send_messages"] = False
         elif data["type"] == "reset_request":
             self.client_reset(conn)
+        elif data["type"] == "disconnect":
+            self.client_drop(conn, "Graceful Disconnect", notify=True)
 
     def client_send(self, conn, data):
         data = json.dumps(data)

@@ -669,6 +669,13 @@ class TestIO:
         assert len(fakes["irssi"].iowatches) == 1
         assert self.rstatus.clients == {}
 
+        (client, clientinfo) = self.create_client(sendable=90000)
+        self.rstatus.client_drop(client, "TEST", notify=True)
+
+        assert not client.closed
+        fakes["irssi"].time_advance(DROP_NOTIFY)
+        assert client.closed
+
     def test_client_drop_notify(self):
         (client, clientinfo) = self.create_client()
 
@@ -843,6 +850,17 @@ class TestIO:
         assert client not in self.rstatus.clients
 
     def test_client_recv(self):
+        (client, clientinfo) = self.create_client()
+        assert clientinfo["send_queue"] == ""
+        self.rstatus.client_recv(client, {"type": "disconnect"})
+        assert not client.closed
+        assert client not in self.rstatus.clients
+
+        assert json.loads(client.sent[0][1][:-1]) == \
+            {"type": "disconnect_notice"}
+        fakes["irssi"].time_advance(DROP_NOTIFY)
+        assert client.closed
+
         true_object = {
             "type": "settings",
             "send_messages": True
