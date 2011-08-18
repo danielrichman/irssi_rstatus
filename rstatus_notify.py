@@ -253,7 +253,7 @@ if __name__ == "__main__":
         "connect_command": ("ssh", "anapnea", "socat", "-T", "700",
                             "unix-client:.irssi/rstatus_sock",
                             "stdin!!stdout"),
-        "icons_dir": "" #os.path.realpath(os.path.dirname(__file__))
+        "icons_dir": os.path.realpath(os.path.dirname(__file__))
     }
 
     logging.basicConfig(level=logging.DEBUG)
