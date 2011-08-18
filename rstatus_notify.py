@@ -99,7 +99,7 @@ class RStatusNotify:
             del self.timeouts[name]
 
         if t != None:
-            glib.timeout_add_seconds(t, callback)
+            self.timeouts[name] = glib.timeout_add_seconds(t, callback)
 
     def update_hb_timeout(self, name, leeway, callback):
         t = self.heartbeat + (leeway * self.heartbeat_leeway)
