@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with irssi_rstatus.  If not, see <http://www.gnu.org/licenses/>.
 
+# Warning: This client, while heartbeating, does not care about the
+# server timing out!
+
 import sys
 import socket
 import select
