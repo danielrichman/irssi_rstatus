@@ -192,7 +192,7 @@ class RStatusNotify:
 
             n["lines"].append(message)
             n["lines"][:-5] = []
-            n["nobj"].update(title, join("\n", n["lines"]))
+            n["nobj"].update(title, "\n".join(n["lines"]))
             n["nobj"].show()
 
         else:
