@@ -33,7 +33,7 @@ perfectly for me, but I've included a patched tarball of the source in github
 to make it easier.
 
 Download irssi-python, irssi (for the headers). You'll need the python headers
-available; these will be available in your distributions package management.
+available; these will be available in your distribution's package management.
 
 Execute these commands on the server that will be running irssi.
 
