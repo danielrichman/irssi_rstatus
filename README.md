@@ -49,7 +49,7 @@ Execute these commands on the server that will be running irssi.
     $ make -C src constants
     $ make
 
-libpython.so will then be at src/.libs/libpytho.so
+libpython.so will then be at src/.libs/libpython.so
 
 It is then trivial to install irssi-python for your user (i.e., not system
 wide) like so:
