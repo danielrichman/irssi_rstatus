@@ -58,8 +58,14 @@ class RStatusNotify:
         self.windows = {}
         self.notifications = {}
 
+    def create_icon(self):
         self.icon = gtk.StatusIcon()
+        self.icon.connect("activate", self.icon_clicked)
         self.status_update()
+
+    def icon_clicked(self, icon):
+        logging.debug("Icon clicked; reset.")
+        self.handle_reset()
 
     def open_ssh(self):
         self._p = subprocess.Popen(config["connect_command"],
@@ -77,6 +83,7 @@ class RStatusNotify:
     def run(self):
         self.prepare()
         self.open_ssh()
+        self.create_icon()
 
         glib.io_add_watch(self._p.stdout, glib.IO_ERR | glib.IO_HUP,
                           self.cb_io_problem)
@@ -86,27 +93,27 @@ class RStatusNotify:
         glib.io_add_watch(self._p.stdout, glib.IO_IN,
                           self.cb_io_in)
 
-        self.update_hb_timeout("read", 1, self.timeout_drop)
+        self.update_hb_timeout("read", 1, self.timeout_drop, "READ (F)")
         self.update_hb_timeout("sendhb", -1, self.send_heartbeat)
 
         self.output({"type": "settings", "send_messages": True})
 
         gtk.main()
 
-    def update_timeout(self, name, t, callback):
+    def update_timeout(self, name, t, callback, *args):
         if name in self.timeouts:
             glib.source_remove(self.timeouts[name])
             del self.timeouts[name]
 
         if t != None:
-            self.timeouts[name] = glib.timeout_add_seconds(t, callback)
+            self.timeouts[name] = glib.timeout_add_seconds(t, callback, *args)
 
-    def update_hb_timeout(self, name, leeway, callback):
+    def update_hb_timeout(self, name, leeway, callback, *args):
         t = self.heartbeat + (leeway * self.heartbeat_leeway)
-        self.update_timeout(name, t, callback)
+        self.update_timeout(name, t, callback, *args)
 
-    def timeout_drop(self):
-        logging.error("Heartbeat timed out")
+    def timeout_drop(self, reason):
+        logging.error("Heartbeat timed out: " + reason)
         gtk.main_quit()
 
     def send_heartbeat(self):
@@ -119,16 +126,19 @@ class RStatusNotify:
         self.read_buffer += data
 
         if data:
-            self.update_hb_timeout("read", 1, self.timeout_drop)
+            self.update_hb_timeout("read", 1, self.timeout_drop, "READ")
 
         if "\n" in self.read_buffer:
             lines = self.read_buffer.split("\n")
             self.read_buffer = lines[-1]
 
             for line in lines[:-1]:
-                obj = json.loads(line)
-                logging.debug("Processing obj: " + repr(obj))
-                self.handle_input(obj)
+                if line:
+                    logging.debug("Processing obj: " + line)
+                    obj = json.loads(line)
+                    self.handle_input(obj)
+                else:
+                    logging.debug("Received HB")
 
         return True
 
@@ -142,7 +152,8 @@ class RStatusNotify:
             return False
 
         if bytes_written or "senddata" not in self.timeouts:
-            self.update_timeout("senddata", self.txtimeout, self.timeout_drop)
+            self.update_timeout("senddata", self.txtimeout,
+                                self.timeout_drop, "SEND")
 
         if self.write_watch == None:
             self.write_watch = glib.io_add_watch(self._p.stdin, glib.IO_OUT,
@@ -248,6 +259,22 @@ class RStatusNotify:
         self.icon.set_from_file(icon_name)
         self.icon.set_blinking(level_name == "hilight")
 
+        tooltips = []
+
+        for key in self.windows:
+            (server, wtype, name) = key
+            value = self.windows[key]
+
+            o = {"server": server, "name": name,
+                 "level": self.level_names[value]}
+
+            if o["level"] == "none":
+                continue
+
+            tooltips.append("{name} ({server}): {level}".format(**o))
+
+        self.icon.set_tooltip_text("\n".join(tooltips))
+
 if __name__ == "__main__":
     config = {
         "connect_command": ("ssh", "anapnea", "socat", "-T", "700",
@@ -256,7 +283,8 @@ if __name__ == "__main__":
         "icons_dir": os.path.realpath(os.path.dirname(__file__))
     }
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG,
+        format="[%(asctime)s %(levelname)s %(name)s]: %(message)s")
     pynotify.init("RStatus")
 
     for sig in [signal.SIGINT, signal.SIGTERM]:
