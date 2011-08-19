@@ -283,7 +283,7 @@ if __name__ == "__main__":
         "icons_dir": os.path.realpath(os.path.dirname(__file__))
     }
 
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
         format="[%(asctime)s %(levelname)s %(name)s]: %(message)s")
     pynotify.init("RStatus")
 
