@@ -19,7 +19,7 @@ GNU General Public License for more details.
 For a full copy of the GNU General Public License, 
 see <http://www.gnu.org/licenses/>.
 
-    ---
+---
 
 irssi_none.png, irssi_message.png, irssi_hilight.png aree derived from the
 banner image http://irssi.org/images/irssitop.png from http://irssi.org/.
