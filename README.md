@@ -28,9 +28,11 @@ That file is Copyright (C) 2000-2011 The Irssi project.
 Building and installing irssi-python
 ------------------------------------
 
-The guide at http://sector-5.net/archives/irssi-python-for-irssi-0-8-15/ worked
-perfectly for me, but I've included a patched tarball of the source in github
-to make it easier.
+The guide at http://sector-5.net/archives/irssi-python-for-irssi-0-8-15/ works,
+with one modification: `Py_XDECREF(self->server);` needed to be added to
+PyChannel_dealloc and PyQuery_dealloc.
+
+I've included a patched tarball of the source in github to make it easier.
 
 Download irssi-python, irssi (for the headers). You'll need the python headers
 available; these will be available in your distribution's package management.
@@ -91,7 +93,7 @@ Configuration:
 Scroll to the bottom, and look for:
 
     config = {
-        "connect_command": ("ssh", "anapnea", "socat", "-T", "700",
+        "connect_command": ("ssh", server, "socat", "-T", "700",
                             "unix-client:.irssi/rstatus_sock",
                             "stdin!!stdout"),
         "icons_dir": os.path.realpath(os.path.dirname(__file__))
@@ -101,12 +103,12 @@ You need to edit connect_command so that when that command is executed,
 irssi_rstatus.py will be connected on standard in and standard out
 to ~/.irssi/rstatus_sock on the server running irssi. To do this, I'm
 using socat installed on the server, and I've got a ssh public key and
-my ssh config setup so that when I type ssh anapnea, it connects to
-my account at anapnea.net.
+my ssh config setup so that when I type ssh my_server, it connects to
+my account at my_server.
 
 And now, to run it:
 
-    $ python irssi_rstatus/rstatus_notify.py
+    $ python irssi_rstatus/rstatus_notify.py my_server
 
 You can put the irssi_rstatus folder somewhere where it won't bother you and
 add python irssi_rstatus/rstatus_notify.py to execute on startup.

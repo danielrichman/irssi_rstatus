@@ -276,8 +276,14 @@ class RStatusNotify:
         self.icon.set_tooltip_text("\n".join(tooltips))
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print "Usage: {0} <server>\n".format(sys.argv[0])
+        sys.exit(1)
+    else:
+        server = sys.argv[1]
+
     config = {
-        "connect_command": ("ssh", "anapnea", "socat", "-T", "700",
+        "connect_command": ("ssh", server, "socat", "-T", "700",
                             "unix-client:.irssi/rstatus_sock",
                             "stdin!!stdout"),
         "icons_dir": os.path.realpath(os.path.dirname(__file__))
