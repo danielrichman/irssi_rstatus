@@ -400,6 +400,7 @@ class RStatus:
 
         if len(self.clients[conn]["recv_buffer"]) > self.cbuffer_limit:
             self.client_drop(conn, "RECV Buffer Overflow", notify=True)
+            return False
 
         if "\n" in self.clients[conn]["recv_buffer"]:
             data_parts = self.clients[conn]["recv_buffer"].split("\n")
@@ -414,6 +415,10 @@ class RStatus:
                     data = json.loads(data)
                     assert isinstance(data, dict)
                     self.client_recv(conn, data)
+
+                    # Happens when we receive a disconnect request
+                    if conn not in self.clients:
+                        return False
                 except:
                     if self.debug:
                         irssi.prnt("RStatus: Client parse failed")
