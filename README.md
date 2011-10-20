@@ -29,8 +29,8 @@ Building and installing irssi-python
 ------------------------------------
 
 The guide at http://sector-5.net/archives/irssi-python-for-irssi-0-8-15/ works,
-with one modification: `Py_XDECREF(self->server);` needed to be added to
-PyChannel_dealloc and PyQuery_dealloc.
+with two modifications to patch memory leaks (channel-object.c,
+query-object.c).
 
 I've included a patched tarball of the source in github to make it easier.
 
