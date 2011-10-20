@@ -39,7 +39,7 @@ available; these will be available in your distribution's package management.
 
 Execute these commands on the server that will be running irssi.
 
-    $ sudo aptitude install python-dev
+    $ sudo aptitude install python-dev libglib2.0-dev
     $ mkdir irssi-python-build
     $ cd irssi-python-build
     $ wget https://github.com/downloads/danielrichman/irssi_rstatus/irssi-python-ac.tar.gz
@@ -64,6 +64,7 @@ wide) like so:
 Finally, add the irssi_rstatus plugin...
 
     $ cd ..
+    $ sudo aptitude install git-core
     $ git clone git://github.com/danielrichman/irssi_rstatus.git
     $ cp irssi_rstatus/rstatus.py ~/.irssi/scripts/autorun/
 
