@@ -58,6 +58,7 @@ wide) like so:
 
     $ mkdir -p ~/.irssi/modules ~/.irssi/scripts/autorun
     $ cp src/.libs/libpython.so ~/.irssi/modules/
+    $ strip ~/.irssi/modules/libpython.so
     $ echo "load python" >> ~/.irssi/startup
     $ cp src/irssi.py src/irssi_startup.py ~/.irssi/scripts
 
