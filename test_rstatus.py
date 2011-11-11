@@ -463,6 +463,16 @@ class TestSignals:
             "message": "Hello"
         } ]
 
+    def test_msg_garbage(self):
+        self.rstatus.privmsg(FakeIrssiServer(), "He\xfello", "Sibling", None)
+        assert self.infos == [ {
+            "nick": "Sibling",
+            "server": "TheServer",
+            "type": "message",
+            "wtype": "query",
+            "message": u"He\u00fello"
+        } ]
+
     def test_pubmsg(self):
         server = FakeIrssiServer("mynicknamE")
         self.rstatus.pubmsg(server, "no hilight here", "source", None, "#ch")

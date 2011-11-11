@@ -118,13 +118,22 @@ class RStatus:
     def windowhilight(self, window):
         self.update(self.window_info(window))
 
+    def try_unicode(self, text):
+        for enc in ["ascii", "utf8", "iso-8859-1", "windows-1252"]:
+            try:
+                return unicode(text, enc)
+            except:
+                pass
+
+        return unicode(text, "ascii", "ignore")
+
     def privmsg(self, server, msg, nick, address):
         info = {
             "nick": nick,
             "server": server.tag,
             "type": "message",
             "wtype": "query",
-            "message": msg
+            "message": self.try_unicode(msg)
         }
         self.update(info)
 
@@ -144,7 +153,7 @@ class RStatus:
             "server": server.tag,
             "type": "message",
             "wtype": "channel",
-            "message": msg
+            "message": self.try_unicode(msg)
         }
         self.update(info)
 
